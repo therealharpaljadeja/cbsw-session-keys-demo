@@ -9,8 +9,8 @@ type Types = {
     context: Hex;
 };
 
-async function getTable(key: string) {
-    return openDB("cbw", 1, {
+async function getDatabase(key: string) {
+    return openDB("cbsw", 1, {
         upgrade(db: any) {
             if (!db.objectStoreNames.contains(key)) {
                 const contextStore = db.createObjectStore("context", {
@@ -41,7 +41,7 @@ const useIndexedDBState = <T extends keyof Types>(
     useEffect(() => {
         const initDB = async () => {
             if (address) {
-                const db = await getTable(key);
+                const db = await getDatabase(key);
 
                 const storedValue = await db.get(key, checksumAddress(address));
                 if (storedValue !== undefined) {
@@ -69,7 +69,7 @@ const useIndexedDBState = <T extends keyof Types>(
     useEffect(() => {
         const saveToDB = async () => {
             if (address) {
-                const db = await getTable(key);
+                const db = await getDatabase(key);
                 if (key === "credential") {
                     await db.put(key, {
                         address: checksumAddress(address),

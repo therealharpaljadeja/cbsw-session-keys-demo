@@ -1,4 +1,4 @@
-import useIndexedDBState from "@/hooks/useIndexedDb";
+import useIndexedDBState from "@/hooks/useIndexedDbState";
 import React, { ReactNode, useCallback, useContext, useState } from "react";
 import { encodeFunctionData, Hex } from "viem";
 import { useAccount, useWalletClient } from "wagmi";
