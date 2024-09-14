@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { Hex, parseEther, toFunctionSelector } from "viem";
 import { useGrantPermissions } from "wagmi/experimental";
 import { createCredential } from "webauthn-p256";
@@ -9,11 +9,11 @@ import CoinbaseButton, { buttonStyles } from "@/components/CoinbaseButton";
 import CurrencySwipeGame from "./CurrencyGame";
 import { useSessionKeys } from "@/context/SessionKeysContext";
 import { CoinbaseWalletLogo } from "@/components/CoinbaseWalletLogo";
-// import useIndexedDB from "@/hooks/useIndexedDb";
 
 function App() {
     const account = useAccount();
     const { connectors } = useConnect();
+    const { disconnect } = useDisconnect();
     const {
         setPermissionsContext,
         setCredential,
@@ -21,11 +21,12 @@ function App() {
         credential,
     } = useSessionKeys();
     const { grantPermissionsAsync } = useGrantPermissions();
-    // const { addData } = useIndexedDB();
 
     const grantPermissions = async () => {
         if (account.address) {
-            const newCredential = await createCredential({ type: "cryptoKey" });
+            const { privateKey, publicKey, sign } = await createCredential({
+                type: "cryptoKey",
+            });
             const response = await grantPermissionsAsync({
                 permissions: [
                     {
@@ -36,7 +37,7 @@ function App() {
                             type: "key",
                             data: {
                                 type: "secp256r1",
-                                publicKey: newCredential.publicKey,
+                                publicKey: publicKey,
                             },
                         },
                         permissions: [
@@ -64,7 +65,7 @@ function App() {
 
             const context = response[0].context as Hex;
             setPermissionsContext(context);
-            setCredential(newCredential);
+            setCredential({ privateKey, publicKey });
         }
     };
 
@@ -92,6 +93,12 @@ function App() {
                                 >
                                     Grant Permissions
                                 </span>
+                            </button>
+                            <button
+                                onClick={() => disconnect}
+                                className="text-white bg-gray-900 px-4 py-2 rounded-md"
+                            >
+                                Disconnect Wallet
                             </button>
                         </div>
                     )

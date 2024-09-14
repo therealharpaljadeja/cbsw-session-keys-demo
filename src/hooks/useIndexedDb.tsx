@@ -1,127 +1,95 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { openDB } from "idb";
+import { checksumAddress, Hex } from "viem";
+import { useAccount } from "wagmi";
+import { P256Credential } from "webauthn-p256";
 
-// Define types for the IndexedDB operations
-interface IndexedDBContext {
-    openDatabase: (dbName: string, version: number) => Promise<IDBDatabase>;
-    addData: (dbName: string, data: DataType) => Promise<void>;
-    getData: (dbName: string, id: number) => Promise<DataType | undefined>;
-    updateData: (dbName: string, data: DataType) => Promise<void>;
-    deleteData: (dbName: string, id: number) => Promise<void>;
-}
-
-// Define types for the IndexedDB operations
-interface DataType {
-    id?: number; // Optional, will be auto-incremented if not provided
-    context: string;
-    credential: string;
-}
-
-const useIndexedDB = (): IndexedDBContext => {
-    const openDatabase = useCallback((dbName: string, version: number) => {
-        return new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open(dbName, version);
-
-            request.onsuccess = (event) => {
-                resolve((event.target as IDBOpenDBRequest).result);
-            };
-
-            request.onerror = (event) => {
-                reject((event.target as IDBOpenDBRequest).error);
-            };
-
-            request.onupgradeneeded = (event) => {
-                const db = (event.target as IDBOpenDBRequest).result;
-                if (!db.objectStoreNames.contains("sessions")) {
-                    db.createObjectStore("sessions", {
-                        keyPath: "id",
-                        autoIncrement: true,
-                    });
-                }
-            };
-        });
-    }, []);
-
-    const addData = useCallback(
-        async (dbName: string, data: DataType) => {
-            const db = await openDatabase(dbName, 1);
-            return new Promise<void>((resolve, reject) => {
-                const transaction = db.transaction("sessions", "readwrite");
-                const store = transaction.objectStore("sessions");
-                const request = store.add(data);
-
-                request.onsuccess = () => {
-                    resolve();
-                };
-
-                request.onerror = (event) => {
-                    reject((event.target as IDBRequest).error);
-                };
-            });
-        },
-        [openDatabase]
-    );
-
-    const getData = useCallback(
-        async (dbName: string, id: number) => {
-            const db = await openDatabase(dbName, 1);
-            return new Promise<any>((resolve, reject) => {
-                const transaction = db.transaction("sessions", "readonly");
-                const store = transaction.objectStore("sessions");
-                const request = store.get(id);
-
-                request.onsuccess = (event) => {
-                    resolve((event.target as IDBRequest).result);
-                };
-
-                request.onerror = (event) => {
-                    reject((event.target as IDBRequest).error);
-                };
-            });
-        },
-        [openDatabase]
-    );
-
-    const updateData = useCallback(
-        async (dbName: string, data: DataType) => {
-            const db = await openDatabase(dbName, 1);
-            return new Promise<void>((resolve, reject) => {
-                const transaction = db.transaction("sessions", "readwrite");
-                const store = transaction.objectStore("sessions");
-                const request = store.put(data);
-
-                request.onsuccess = () => {
-                    resolve();
-                };
-
-                request.onerror = (event) => {
-                    reject((event.target as IDBRequest).error);
-                };
-            });
-        },
-        [openDatabase]
-    );
-
-    const deleteData = useCallback(
-        async (dbName: string, id: number) => {
-            const db = await openDatabase(dbName, 1);
-            return new Promise<void>((resolve, reject) => {
-                const transaction = db.transaction("sessions", "readwrite");
-                const store = transaction.objectStore("sessions");
-                const request = store.delete(id);
-
-                request.onsuccess = () => {
-                    resolve();
-                };
-
-                request.onerror = (event) => {
-                    reject((event.target as IDBRequest).error);
-                };
-            });
-        },
-        [openDatabase]
-    );
-
-    return { openDatabase, addData, getData, updateData, deleteData };
+type Types = {
+    credential: Omit<P256Credential<"cryptokey">, "sign">;
+    context: Hex;
 };
 
-export default useIndexedDB;
+async function getTable(key: string) {
+    return openDB("cbw", 1, {
+        upgrade(db: any) {
+            if (!db.objectStoreNames.contains(key)) {
+                const contextStore = db.createObjectStore("context", {
+                    keyPath: "address",
+                });
+                const credentialStore = db.createObjectStore("credential", {
+                    keyPath: "address",
+                });
+                contextStore.createIndex("address", "address", {
+                    unique: true,
+                });
+                credentialStore.createIndex("address", "address", {
+                    unique: true,
+                });
+            }
+        },
+    });
+}
+
+const useIndexedDBState = <T extends keyof Types>(
+    key: T,
+    initialValue: Types[T] | undefined
+) => {
+    const [state, setState] = useState<Types[T] | undefined>(initialValue);
+    const { address } = useAccount();
+
+    // Create or open the database
+    useEffect(() => {
+        const initDB = async () => {
+            if (address) {
+                const db = await getTable(key);
+
+                const storedValue = await db.get(key, checksumAddress(address));
+                if (storedValue !== undefined) {
+                    if (key === "credential") {
+                        const { credential } = storedValue as {
+                            address: Hex;
+                            credential: Types[T];
+                        };
+                        setState(credential);
+                    } else {
+                        const { context } = storedValue as {
+                            address: Hex;
+                            context: Types[T];
+                        };
+                        setState(context);
+                    }
+                }
+            }
+        };
+
+        initDB();
+    }, [key, address]);
+
+    // Store value in IndexedDB on state change
+    useEffect(() => {
+        const saveToDB = async () => {
+            if (address) {
+                const db = await getTable(key);
+                if (key === "credential") {
+                    await db.put(key, {
+                        address: checksumAddress(address),
+                        credential: state,
+                    });
+                } else {
+                    await db.put(key, {
+                        address: checksumAddress(address),
+                        context: state,
+                    });
+                }
+            }
+        };
+
+        if (state !== undefined) {
+            saveToDB();
+        }
+    }, [state, key]);
+
+    return { state, setState };
+};
+
+export default useIndexedDBState;

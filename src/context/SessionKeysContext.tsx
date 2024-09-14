@@ -1,18 +1,14 @@
-import useIndexedDB from "@/hooks/useIndexedDb";
-import React, { ReactNode, useContext, useEffect, useState } from "react";
+import useIndexedDBState from "@/hooks/useIndexedDb";
+import React, { ReactNode, useCallback, useContext, useState } from "react";
 import { encodeFunctionData, Hex } from "viem";
-import {
-    useAccount,
-    useWaitForTransactionReceipt,
-    useWalletClient,
-} from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { P256Credential, signWithCredential } from "webauthn-p256";
 import { clickAbi, clickAddress } from "@/click";
 import { useSendCalls } from "wagmi/experimental";
 
 interface SessionKeyContextType {
     permissionsContext?: Hex;
-    credential?: P256Credential<"cryptokey">;
+    credential?: Omit<P256Credential<"cryptokey">, "sign">;
     submitted: boolean;
     callsId: string | undefined;
     setSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
@@ -37,29 +33,18 @@ export const SessionKeysProvider: React.FC<SessionKeysProviderProps> = ({
 }) => {
     const account = useAccount();
     const { data: walletClient } = useWalletClient();
-    const [permissionsContext, setPermissionsContext] = useState<
-        Hex | undefined
-    >();
-    const [credential, setCredential] = useState<
-        undefined | P256Credential<"cryptokey">
-    >();
+    const { state: permissionsContext, setState: setPermissionsContext } =
+        useIndexedDBState<"context">("context", undefined);
+    const { state: credential, setState: setCredential } =
+        useIndexedDBState<"credential">("credential", undefined);
     const [submitted, setSubmitted] = useState(false);
     const [callsId, setCallsId] = useState<string>();
     const { sendCallsAsync } = useSendCalls();
 
+    if (!walletClient) return null;
+
     const click = async () => {
-        console.log(
-            account.address,
-            permissionsContext,
-            credential,
-            walletClient
-        );
-        if (
-            account.address &&
-            permissionsContext &&
-            credential &&
-            walletClient
-        ) {
+        if (account.address && permissionsContext && credential) {
             setSubmitted(true);
             setCallsId(undefined);
             console.log("Click");
@@ -94,21 +79,6 @@ export const SessionKeysProvider: React.FC<SessionKeysProviderProps> = ({
             setSubmitted(false);
         }
     };
-    // const { openDatabase, getData, addData } = useIndexedDB();
-
-    // useEffect(() => {
-    //     async function init() {
-    //         const data = await getData("sessions", Number(address));
-    //         if (data) {
-    //             setPermissionsContext(data.context as Hex);
-    //             setCredential(
-    //                 data.credential as unknown as P256Credential<"cryptokey">
-    //             );
-    //         }
-    //     }
-
-    //     init();
-    // }, []);
 
     return (
         <SessionKeysContext.Provider
